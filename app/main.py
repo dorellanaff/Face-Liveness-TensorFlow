@@ -28,9 +28,19 @@ app.add_middleware(
 # Cargar el modelo al iniciar la aplicación
 modelObj = Model()
 model = modelObj.model
+<<<<<<< HEAD
 path_model = os.path.join(cwd, 'Weights')
 path_model = os.path.join(path_model, 'best_weights_xtrim_1.h5')
 model.load_weights(path_model) #"Weights/best_weights_xtrim_better.h5"
+=======
+model.load_weights(r"Weights\best_weights_xtrim_epoch1.h5") #"Weights/best_weights_xtrim_better.h5"
+
+# best_weights_xtrim_better - 0.050765
+# best_weights_xtrim_epoch1 - 0.050765
+# best_weights_xtrim_1      - 0.089974
+# best_weights              - 0.118865
+# best_weights_checkpoint   - 0.056415
+>>>>>>> origin/xtrim
 
 class PredictionResponse(BaseModel):
     message: str
@@ -64,7 +74,7 @@ async def predict_face(file: UploadFile = File(...)):
         mask, binary = model(face)
         threshold = np.mean(mask)
 
-        message = "Real" if threshold > 0.5 else "Fake"
+        message = "Real" if threshold > 0.4 else "Fake"
         response = PredictionResponse(message=message, threshold=threshold)
         return response
 

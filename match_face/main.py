@@ -1,5 +1,5 @@
 from typing import Annotated
-from fastapi import FastAPI, File, Request, UploadFile, Form, HTTPException
+from fastapi import FastAPI, File, Request, UploadFile, Form, HTTPException, Header
 import os
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -22,7 +22,7 @@ origins = ["*"]
 
 app = FastAPI()
 
-app.add_middleware(HTTPSRedirectMiddleware)
+#app.add_middleware(HTTPSRedirectMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -58,23 +58,29 @@ def generate_csrf_token(id_face: str):
     if val is None:
         raise HTTPException(status_code=404, detail="ID Verificacion no encontrado")
     fake_db_id_faces[id_face]['expiration_time'] = expiration_time
+    fake_db_id_faces[id_face]['csrf'] = token
     return token
 
 # Middleware para manejar la validación de CSRF
 @app.middleware("http")
 async def csrf_middleware(request: Request, call_next):
-    print(fake_db_id_faces)
     if request.method in ("POST", "PUT", "DELETE", "PATCH"):
         token = request.headers.get("X-CSRF-Token")
         id_face = request.headers.get("id-face")
-        if not token or id_face not in fake_db_id_faces:
-            return JSONResponse(content={"message": "Not CSRF token"}, status_code=403)
+        if token is None and id_face is None:
+            return JSONResponse(content={"message": "Not CSRF token or ID Face provided"}, status_code=403)
         
-        if token == fake_db_id_faces[id_face]['csrf'] and fake_db_id_faces[id_face]["expiration_time"] < time.time():
+        if id_face not in fake_db_id_faces:
+            return JSONResponse(content={"message": "ID Verificacion no encontrado"}, status_code=404)
+        
+        print(token, id_face)
+        print(fake_db_id_faces)
+        if token == fake_db_id_faces[id_face]['csrf']:
+            if fake_db_id_faces[id_face]["expiration_time"] < time.time():
+                return JSONResponse(content={"message": "Invalid CSRF time token"}, status_code=403)
+        else:
             return JSONResponse(content={"message": "Invalid CSRF token"}, status_code=403)
-
-        # Token válido, eliminarlo después de su uso
-        fake_db_id_faces[id_face]['csrf'] = None
+    
     response = await call_next(request)
     return response
 
@@ -106,13 +112,12 @@ def get_csrf_token(id_face: str):
     return JSONResponse(content={"csrf_token": token})
 
 @app.post("/match/", response_model=MatchResponse)
-async def predict_face(file: UploadFile = File(...), id_face: str = Form(...)):
+async def predict_face(request: Request, file: UploadFile = File(...)):
     id_number = None
     try:
-        check = fake_db_id_faces.get(id_face, None)
+        id_face = request.headers.get("id-face")
         
-        if check is None:
-            raise Exception("ID Verificacion no encontrado")
+        check = fake_db_id_faces.get(id_face)
         
         id_number = check["id_number"]
         
@@ -150,7 +155,9 @@ async def predict_face(file: UploadFile = File(...), id_face: str = Form(...)):
         
         f_match = True if threshold >= 5 else False
         message = "Verificacion exitosa" if f_match else "Verificacion fallida"
-        response = MatchResponse(message=message, match=f_match, threshold=100)
+        
+        threshold = result_euclidean["distance"] / result_euclidean["threshold"]
+        response = MatchResponse(message=message, match=f_match, threshold=threshold)
         
         '''fake_db_id_faces[id_face] = {
             "id_number": id_number,
@@ -161,6 +168,8 @@ async def predict_face(file: UploadFile = File(...), id_face: str = Form(...)):
         fake_db_id_faces[id_face]['validated'] = True
         fake_db_id_faces[id_face]['result'] = response.model_dump()
         
+        # Token válido, eliminarlo después de su uso
+        fake_db_id_faces[id_face]['csrf'] = None
         return response
 
     except Exception as e:
