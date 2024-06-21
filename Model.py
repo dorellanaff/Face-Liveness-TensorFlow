@@ -2,90 +2,99 @@ import tensorflow as tf
 from Loss import PixWiseBCELoss
 import numpy as np
 
-
 class Model:
-    def __init__(self) -> None:
-        # Load DenseNet121
-        dense = tf.keras.applications.DenseNet121(include_top=False, input_shape=(224,224,3))
-        self.features = dense.layers
-        # Extract desirable layers from DenseNet121
-        enc = self.features[:171]
-        x = enc[-1].output  # Get output of the last extracted layer
-        out_feature_map = tf.keras.layers.Conv2D(1,(1,1), padding='same', strides=1, activation='sigmoid')(x)
+    def __init__(self, base_model=None) -> None:
+        if base_model is None:
+            base_model = tf.keras.applications.DenseNet121(include_top=False, input_shape=(224,224,3))
+        self.features = base_model.layers[:171]
+        x = self.features[-1].output
+        out_feature_map = tf.keras.layers.Conv2D(1, (1, 1), padding='same', strides=1, activation='sigmoid')(x)
         out_map_flat = tf.keras.layers.Flatten()(out_feature_map)
         out_binary = tf.keras.layers.Dense(1, activation='sigmoid')(out_map_flat)
-        # Define a new model using the extracted layers and optionally your own layers
-        input = enc[0].input
+        input = self.features[0].input
         self.model = tf.keras.Model(inputs=input, outputs=[out_feature_map, out_binary])
         self.loss = PixWiseBCELoss(beta=0.5)
         self.optimizer = tf.keras.optimizers.Adam()
 
-    # Define fit method to Train model
     def fit(
         self,
         x_train,
         y_train_label,
         y_train_mask,
+        x_val,
+        y_val_label,
+        y_val_mask,
         epochs=100,
         batch_size=32,
         save_best_weights=True,
         shuffle=True,
+        patience=5
     ):
-        if shuffle == True:
-            # shuffle data
-            # we shuflled data first
+        if shuffle:
             indices = np.arange(x_train.shape[0])
-            # we shuffled indices
             np.random.shuffle(indices)
-            # reassign data(features dataset) and y dataset
             x_train = x_train[indices]
             y_train_label = y_train_label[indices]
             y_train_mask = y_train_mask[indices]
 
-        # using GradientTape to update weights
-        # Using tf.function decorator on train_step could potentially improve performance,
-        # I would recommend experimenting with both options: with and without tf.function, and measure the performance difference.
         @tf.function
         def train_step(x_batch, y_mask_batch, y_label_batch):
             with tf.GradientTape() as tape:
-                out_mask, out_label = self.model(x_batch)
-                batch_loss = self.loss(
-                    [y_mask_batch, y_label_batch], [out_mask, out_label]
-                )
+                out_mask, out_label = self.model(x_batch, training=True)
+                batch_loss = self.loss([y_mask_batch, y_label_batch], [out_mask, out_label])
 
             gradients = tape.gradient(batch_loss, self.model.trainable_variables)
-            self.optimizer.apply_gradients(
-                zip(gradients, self.model.trainable_variables)
-            )
-
+            self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
             return batch_loss
 
-        # Training loop
-        epochs = epochs
+        @tf.function
+        def val_step(x_batch, y_mask_batch, y_label_batch):
+            out_mask, out_label = self.model(x_batch, training=False)
+            batch_loss = self.loss([y_mask_batch, y_label_batch], [out_mask, out_label])
+            return batch_loss
+
         epochs_losses = []
-        batch_size = batch_size
-        num_batches = len(x_train) // batch_size
+        val_losses = []
+        best_loss = np.inf
+        patience_counter = 0
 
         for epoch in range(epochs):
             print(f"Epoch {epoch+1}/{epochs}")
             epoch_loss = 0
+            val_loss = 0
 
-            for batch in range(num_batches):
-                start = batch * batch_size
-                end = (batch + 1) * batch_size
-
-                x_batch = x_train[start:end]
-                y_mask_batch = y_train_mask[start:end]
-                y_label_batch = y_train_label[start:end]
-
+            # Training
+            for batch in range(0, len(x_train), batch_size):
+                x_batch = x_train[batch:batch + batch_size]
+                y_mask_batch = y_train_mask[batch:batch + batch_size]
+                y_label_batch = y_train_label[batch:batch + batch_size]
                 batch_loss = train_step(x_batch, y_mask_batch, y_label_batch)
                 epoch_loss += batch_loss.numpy()
 
-            scaled_loss = epoch_loss / num_batches
-            print(f"Epoch {epoch+1} Loss: {scaled_loss}")
+            # Validation
+            for batch in range(0, len(x_val), batch_size):
+                x_batch = x_val[batch:batch + batch_size]
+                y_mask_batch = y_val_mask[batch:batch + batch_size]
+                y_label_batch = y_val_label[batch:batch + batch_size]
+                batch_loss = val_step(x_batch, y_mask_batch, y_label_batch)
+                val_loss += batch_loss.numpy()
+
+            epoch_loss /= len(x_train) // batch_size
+            val_loss /= len(x_val) // batch_size
+            epochs_losses.append(epoch_loss)
+            val_losses.append(val_loss)
+
+            print(f"Epoch {epoch+1} Loss: {epoch_loss}, Val Loss: {val_loss}")
+
             if save_best_weights:
-                epochs_losses.append(scaled_loss)
-                # save best weights of model
-                if scaled_loss <= min(epochs_losses):
-                    print(f"Weights of Model saved with Loss: {scaled_loss}")
-                    self.model.save_weights("Weights/best_weights.h5")
+                if val_loss < best_loss:
+                    best_loss = val_loss
+                    patience_counter = 0
+                    model_name = f"Weights/best_weights_xtrim_{epoch+1}.h5"
+                    self.model.save_weights(model_name)
+                    print(f"Weights of Model {model_name} saved with Val Loss: {val_loss}")
+                else:
+                    patience_counter += 1
+                    if patience_counter >= patience:
+                        print(f"Early stopping at epoch {epoch+1}")
+                        break
