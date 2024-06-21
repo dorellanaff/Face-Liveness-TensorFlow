@@ -1,18 +1,14 @@
 import tensorflow as tf
 
-# Create Loss function
 class PixWiseBCELoss(tf.keras.losses.Loss):
-    def __init__(self, beta=0.5):
-        super(PixWiseBCELoss, self).__init__()
-        self.criterion = tf.keras.losses.BinaryCrossentropy()
+    def __init__(self, beta=0.5, name='pixwise_bce_loss'):
+        super(PixWiseBCELoss, self).__init__(name=name)
         self.beta = beta
+        self.bce = tf.keras.losses.BinaryCrossentropy()
 
     def call(self, y_true, y_pred):
-        target_mask, target_label = y_true
-        net_mask, net_label = y_pred
-
-        pixel_loss = self.criterion(target_mask, net_mask)
-        binary_loss = self.criterion(target_label, net_label)
-        loss = pixel_loss * self.beta + binary_loss * (1 - self.beta)
-        return loss
-
+        y_true_mask, y_true_label = y_true
+        y_pred_mask, y_pred_label = y_pred
+        mask_loss = self.bce(y_true_mask, y_pred_mask)
+        label_loss = self.bce(y_true_label, y_pred_label)
+        return self.beta * mask_loss + (1 - self.beta) * label_loss
