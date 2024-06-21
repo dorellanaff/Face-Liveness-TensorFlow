@@ -8,7 +8,8 @@ import numpy as np
 from Model import Model
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
-
+import os
+cwd = os.getcwd()
 
 origins = ["*"]
 
@@ -27,6 +28,9 @@ app.add_middleware(
 # Cargar el modelo al iniciar la aplicación
 modelObj = Model()
 model = modelObj.model
+path_model = os.path.join(cwd, 'Weights')
+path_model = os.path.join(path_model, 'best_weights_xtrim_1.h5')
+model.load_weights(path_model) #"Weights/best_weights_xtrim_better.h5"
 model.load_weights(r"Weights\best_weights_xtrim_epoch1.h5") #"Weights/best_weights_xtrim_better.h5"
 
 # best_weights_xtrim_better - 0.050765
