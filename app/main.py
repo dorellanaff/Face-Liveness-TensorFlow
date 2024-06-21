@@ -37,7 +37,6 @@ model.load_weights(path_model) #"Weights/best_weights_xtrim_better.h5"
 # best_weights_xtrim_1      - 0.089974
 # best_weights              - 0.118865
 # best_weights_checkpoint   - 0.056415
->>>>>>> origin/xtrim
 
 class PredictionResponse(BaseModel):
     message: str
