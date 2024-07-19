@@ -1,3 +1,4 @@
+import sys
 from typing import Annotated
 from fastapi import FastAPI, File, Request, UploadFile, Form, HTTPException, Header
 import os
@@ -9,6 +10,7 @@ from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 import cv2
 from uuid import uuid4
 import time
+import traceback
 
 # Configuración de CSRF
 class CsrfSettings(BaseModel):
@@ -47,8 +49,7 @@ fake_db = {
 }
 
 
-fake_db_id_faces = {
-}
+fake_db_id_faces = {'6f5669df-90c5-4f21-b2a1-796fb9a51c8c': {'id_number': '0930499074', 'validated': False, 'result': None, 'csrf': 'ef4dd498-2a43-4b90-b4a6-afa737decc14', 'expiration_time': time.time() + 300}}
 
 # Función para generar un nuevo token CSRF
 def generate_csrf_token(id_face: str):
@@ -121,9 +122,6 @@ async def predict_face(request: Request, file: UploadFile = File(...)):
         
         id_number = check["id_number"]
         
-        #if check['validated']:
-        #    raise Exception("ID Verificacion ya validado")
-        
         path_temp = f"{id_face}_{file.filename}"
         path_file_temp = os.path.join("temp", path_temp)
         
@@ -133,25 +131,30 @@ async def predict_face(request: Request, file: UploadFile = File(...)):
         
         path_validate_file = fake_db[id_number]
         path_validate_file = os.path.join("db", path_validate_file)
-        print(path_validate_file)
         
         # Verificar similitud usando FaceNet con distancia euclidiana
-        result_euclidean = DeepFace.verify(path_validate_file, path_file_temp, model_name='ArcFace', detector_backend="mtcnn", distance_metric='euclidean')
-        print(result_euclidean)
+        """result_euclidean = DeepFace.verify(
+            img1_path=path_validate_file, img2_path=path_file_temp, model_name='ArcFace', 
+            detector_backend="mtcnn", distance_metric='euclidean', anti_spoofing=True)"""
+        
+        face_objs = DeepFace.extract_faces(img_path=path_file_temp, anti_spoofing=True)
+        assert len(face_objs) == 1, f"Expected 1 face, but found {len(face_objs)} faces."
+        assert face_objs[0].get('is_real') is True, f"Face is not real."
+                
+        # Verificar similitud usando FaceNet con distancia euclidiana
+        result_euclidean = DeepFace.verify(
+            img1_path=path_validate_file, img2_path=path_file_temp, anti_spoofing=True)
         '''
         1    ArcFace            mtcnn       euclidean       70.110112         235           47      0.166667
         0    ArcFace            mtcnn          cosine       58.241266         278            4      0.014184
         5    Facenet            mtcnn       euclidean       54.890929         186           96      0.340426  
         3    ArcFace              ssd       euclidean       53.663358         207           75      0.265957  
         '''
-        # Verificar los otros modelos
-        # result_vgg_face = DeepFace.verify(path_validate_file, path_file_temp, model_name='ArcFace', distance_metric='cosine')
-        # result_arc_face = DeepFace.verify(path_validate_file, path_file_temp, model_name='Facenet')
+        print(result_euclidean)
+        
         threshold = 0
         
         threshold = threshold + 5 if result_euclidean["verified"] else 0
-        #threshold = threshold + 2.49 if result_vgg_face["verified"] else 0
-        #threshold = threshold + 2.49 if result_arc_face["verified"] else 0
         
         f_match = True if threshold >= 5 else False
         message = "Verificacion exitosa" if f_match else "Verificacion fallida"
@@ -173,7 +176,20 @@ async def predict_face(request: Request, file: UploadFile = File(...)):
         return response
 
     except Exception as e:
-        print(e)
+        etype, evalue, tb = sys.exc_info()
+        print("Error capturado:", e)
+        
+        # Recorre la cadena de excepciones para encontrar el primer error
+        original_exception = e
+        while original_exception.__cause__:
+            original_exception = original_exception.__cause__
+            
+        # Imprime el primer error
+        etype, evalue, tb = type(original_exception), original_exception, original_exception.__traceback__
+        formatted_exception = traceback.format_exception_only(etype, evalue)
+        first_error_message = formatted_exception[0].strip()  # Obtener el primer mensaje de error
+        print("Primer mensaje de error:", first_error_message)
+        
         response = MatchResponse(message=str(e), match=False, threshold=0)
         
         '''fake_db_id_faces[id_face] = {
