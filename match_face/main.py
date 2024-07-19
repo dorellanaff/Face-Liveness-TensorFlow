@@ -134,18 +134,20 @@ async def predict_face(request: Request, file: UploadFile = File(...)):
         path_validate_file = fake_db[id_number]
         path_validate_file = os.path.join("db", path_validate_file)
         
-        # Verificar similitud usando FaceNet con distancia euclidiana
-        """result_euclidean = DeepFace.verify(
-            img1_path=path_validate_file, img2_path=path_file_temp, model_name='ArcFace', 
-            detector_backend="mtcnn", distance_metric='euclidean', anti_spoofing=True)"""
-        
         face_objs = DeepFace.extract_faces(img_path=path_file_temp, anti_spoofing=True)
         assert len(face_objs) == 1, f"Expected 1 face, but found {len(face_objs)} faces."
         assert face_objs[0].get('is_real') is True, f"Face is not real."
-                
+               
+        
         # Verificar similitud usando FaceNet con distancia euclidiana
         result_euclidean = DeepFace.verify(
-            img1_path=path_validate_file, img2_path=path_file_temp, anti_spoofing=True)
+            img1_path=path_validate_file, img2_path=path_file_temp, model_name='ArcFace', 
+            detector_backend="mtcnn", distance_metric='euclidean', anti_spoofing=True)
+             
+        # Verificar similitud usando FaceNet con distancia euclidiana
+        """result_euclidean = DeepFace.verify(
+            img1_path=path_validate_file, img2_path=path_file_temp, anti_spoofing=True)"""
+            
         '''
         1    ArcFace            mtcnn       euclidean       70.110112         235           47      0.166667
         0    ArcFace            mtcnn          cosine       58.241266         278            4      0.014184
