@@ -15,7 +15,7 @@ origins = ["*"]
 
 app = FastAPI()
 
-app.add_middleware(HTTPSRedirectMiddleware)
+# app.add_middleware(HTTPSRedirectMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -53,10 +53,13 @@ async def predict_face(file: UploadFile = File(...)):
         # Extraer caras de la imagen usando DeepFace
         extracted_faces = DeepFace.extract_faces(
             img,
-            target_size=(224, 224),
-            enforce_detection=True,
-            detector_backend='mediapipe'
+            #target_size=(224, 224),
+            #enforce_detection=True,
+            #detector_backend='mediapipe',
+            anti_spoofing= True
         )
+        
+        print(extracted_faces)
 
         if not extracted_faces:
             return JSONResponse(content={"message": "No se detectó ninguna cara en la imagen"}, status_code=400)
