@@ -29,7 +29,7 @@ app.add_middleware(
 modelObj = Model()
 model = modelObj.model
 path_model = os.path.join(cwd, 'Weights')
-path_model = os.path.join(path_model, 'best_weights_xtrim_1.h5')
+path_model = os.path.join(path_model, 'best_weights_xtrim_1.h5') #'xtrim_20240624.132842_5_1.7594592274881857.h5') #'best_weights_xtrim_1.h5')
 model.load_weights(path_model) #"Weights/best_weights_xtrim_better.h5"
 
 # best_weights_xtrim_better - 0.050765
@@ -73,7 +73,7 @@ async def predict_face(file: UploadFile = File(...)):
         mask, binary = model(face)
         threshold = np.mean(mask)
 
-        message = "Real" if threshold > 0.4 else "Fake"
+        message = "Real" if threshold > 0.06 else "Fake"
         response = PredictionResponse(message=message, threshold=threshold)
         return response
 
